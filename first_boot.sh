@@ -82,6 +82,27 @@ fix_owner() {
     chown -R "${PI_USER}:${PI_USER}" "$@" 2>/dev/null || true
 }
 
+# Poll for outbound DNS before the first apt fetch. On a fresh boot the Ethernet
+# DHCP lease may not have landed yet when Step 3 installs git, which produced the
+# "Temporary failure resolving deb.debian.org" apt errors. Wait (bounded) for a
+# resolvable repo host; returns the instant DNS works, and continues best-effort
+# past the cap since later steps retry on their own. Mirrors provision.sh's poll.
+wait_for_network() {
+    local max_wait="${1:-45}"
+    local waited=0
+    info "Waiting for network + DNS (up to ${max_wait}s)..."
+    while [ "$waited" -lt "$max_wait" ]; do
+        if getent hosts deb.debian.org >/dev/null 2>&1 || getent hosts github.com >/dev/null 2>&1; then
+            ok "Network ready after ${waited}s"
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    warn "Network not confirmed after ${max_wait}s - continuing (later steps retry)"
+    return 0
+}
+
 # Configure a 7-inch 1024x600 HDMI LCD, tailored to the detected board.
 # Detection uses the same /proc/device-tree/model string reported to the
 # server at registration (e.g. "Raspberry Pi 5 Model B Rev 1.0").
@@ -371,6 +392,13 @@ else
         warn "No network connectivity detected - will retry operations anyway"
     fi
 fi
+
+# Bounded fallback: gate the first apt fetch on real DNS. The systemd
+# NetworkManager-wait-online gate (re-enabled by the image build) normally
+# ensures the link is up before this service runs, but Step 2 above only pings
+# once and moves on - so wait here for DNS before Step 3 installs git, covering
+# the case where the boot-layer gate's timeout expired before the lease landed.
+wait_for_network 45
 
 # =====================================================================
 # STEP 3: Configure GitHub credentials

@@ -6,6 +6,19 @@ addresses. Technical detail for individual changes lives in the pull requests.
 The `release` job in CI publishes a GitHub Release for the version in the `VERSION` file on each
 merge to main - so bump `VERSION` and add a section here in every pull request.
 
+## 1.2.1 - 2026-08-16
+
+- First boot no longer tries to fetch packages before the network is up. On a freshly imaged Pi,
+  the setup step that installs git could run before the Ethernet DHCP lease had landed, throwing a
+  burst of "Temporary failure resolving deb.debian.org" errors on the console before the connection
+  came up a few seconds later. The build had been turning off the boot-layer network gate outright;
+  it now keeps that gate but caps the wait at 45 seconds, so first boot waits for the link to be
+  reachable before that first fetch and a clean boot no longer shows those errors.
+- The cap means a missing or slow connection never stalls boot: the login prompt still appears
+  immediately (it does not depend on the network), and if the network never comes up, setup simply
+  retries on the next boot as it already did. As a fallback, first_boot.sh also waits for working
+  DNS before its own first package fetch.
+
 ## 1.2.0 - 2026-07-28
 
 - The store's city and state are now checked against a list of every US place while the card is

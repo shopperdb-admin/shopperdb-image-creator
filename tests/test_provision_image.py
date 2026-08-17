@@ -11,6 +11,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CREATE_SH = REPO_ROOT / "create-image.sh"
+CREATE_PS1 = REPO_ROOT / "create-image.ps1"
 STATION_CONF_EXAMPLE = REPO_ROOT / "station.conf.example"
 FIRST_BOOT_SH = REPO_ROOT / "first_boot.sh"
 _DEFAULTS_FILE = REPO_ROOT / ".create-image.defaults.json"
@@ -163,6 +164,22 @@ class TestFirstBootSh:
             "first_boot.sh must explicitly chown the credentials file after fix_owner"
         )
 
+    def test_waits_for_dns_before_apt_fetch(self):
+        """first_boot.sh must poll for DNS before Step 3 installs git via apt.
+
+        On a fresh boot the Ethernet DHCP lease may not have landed when the
+        setup service runs, so a git apt fetch fails with "Temporary failure
+        resolving deb.debian.org". A bounded wait_for_network gates the fetch on
+        real DNS. Complements the boot-layer NetworkManager-wait-online gate that
+        create-image.sh installs.
+        """
+        content = FIRST_BOOT_SH.read_text()
+        assert "wait_for_network()" in content, "first_boot.sh missing wait_for_network helper"
+        gate = content.find("wait_for_network 45")
+        step3 = content.find("[3/7] Configuring GitHub credentials")
+        assert gate != -1, "first_boot.sh must call wait_for_network before fetching packages"
+        assert step3 != -1 and gate < step3, "wait_for_network must run before Step 3's apt fetch"
+
 
 # ═════════════════════════════════════════════════════════════════════
 # create-image.sh
@@ -200,6 +217,38 @@ class TestCreateImageShAdminHash:
         content = CREATE_SH.read_text()
         assert "admin_password.hash" in content, "create-image.sh does not reference admin_password.hash"
         assert "api.github.com" in content, "create-image.sh does not fall back to GitHub API for admin hash fetch"
+
+
+class TestCreateImageNetworkGate:
+    """The image build must gate first-boot package fetches on the network being up.
+
+    Disabling NetworkManager-wait-online (the old behavior) lets network-online.target
+    pass before DHCP/DNS settle, so the setup service - correctly ordered
+    After=network-online.target - still fetches packages on a dead link and the apt
+    calls fail with "Temporary failure resolving". Both the bash and PowerShell image
+    builders must re-enable it with a bounded timeout.
+    """
+
+    @pytest.mark.parametrize("script", [CREATE_SH, CREATE_PS1], ids=["sh", "ps1"])
+    def test_reenables_networkmanager_wait_online(self, script):
+        content = script.read_text()
+        assert "systemctl enable NetworkManager-wait-online.service" in content, (
+            f"{script.name} must enable NetworkManager-wait-online so network-online.target is gated"
+        )
+        assert "systemctl disable NetworkManager-wait-online.service" not in content, (
+            f"{script.name} must not disable NetworkManager-wait-online (that removes the boot-layer network gate)"
+        )
+
+    @pytest.mark.parametrize("script", [CREATE_SH, CREATE_PS1], ids=["sh", "ps1"])
+    def test_wait_online_timeout_is_bounded(self, script):
+        """The wait must be capped via a drop-in so an absent connection never stalls boot."""
+        content = script.read_text()
+        assert "NetworkManager-wait-online.service.d/timeout.conf" in content, (
+            f"{script.name} must install the bounded wait-online drop-in"
+        )
+        assert "nm-online -s -q --timeout=45" in content, (
+            f"{script.name} must bound the wait-online timeout (nm-online --timeout=45)"
+        )
 
 
 @pytest.mark.bash
@@ -605,8 +654,6 @@ class TestWifiStationConf:
 # ═════════════════════════════════════════════════════════════════════
 # Store web address (subdomain label)
 # ═════════════════════════════════════════════════════════════════════
-
-CREATE_PS1 = REPO_ROOT / "create-image.ps1"
 
 # name, city, state -> expected address. The same table drives both implementations, so the
 # bash and PowerShell copies cannot drift apart unnoticed.
