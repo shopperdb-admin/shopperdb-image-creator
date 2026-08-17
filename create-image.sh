@@ -1095,10 +1095,20 @@ update-locale LANG=__LOCALE__ 2>/dev/null || true
 # multi-user.target is the correct default for a server/headless Pi.
 systemctl set-default multi-user.target 2>/dev/null || true
 
-# Prevent NetworkManager from blocking boot when the network is not immediately
-# available. Without this, the boot hangs at graphical.target waiting for a
-# fully established connection before releasing to the login prompt.
-systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+# Gate network-online.target on the link actually being reachable so the
+# first-boot setup service (ordered After=network-online.target) does not fetch
+# packages before DHCP/DNS have settled - the apt "Temporary failure resolving"
+# errors seen when setup ran before the Ethernet lease landed. Bound the wait to
+# 45s so a slow or absent connection never stalls boot; the login getty does not
+# depend on network-online.target, so the prompt still appears right away. If the
+# network never comes up, boot proceeds and first-boot setup retries next boot.
+mkdir -p /etc/systemd/system/NetworkManager-wait-online.service.d
+cat >/etc/systemd/system/NetworkManager-wait-online.service.d/timeout.conf <<'WAITEOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/nm-online -s -q --timeout=45
+WAITEOF
+systemctl enable NetworkManager-wait-online.service 2>/dev/null || true
 
 # Disable cloud-init - it looks for a cloud metadata server that does not exist
 # on a local network and will hang Boot 2 indefinitely waiting for a response.
