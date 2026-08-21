@@ -1,6 +1,8 @@
 # shopperdb-image-creator
 
 [![CI](https://github.com/shopperdb-dot-com/shopperdb-image-creator/actions/workflows/ci.yml/badge.svg)](https://github.com/shopperdb-dot-com/shopperdb-image-creator/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/shopperdb-dot-com/shopperdb-image-creator)](https://github.com/shopperdb-dot-com/shopperdb-image-creator/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/shopperdb-dot-com/shopperdb-image-creator)](LICENSE)
 
 SD card preparation tool for deploying shopperdb stations on Raspberry Pi.
 
@@ -259,3 +261,7 @@ uv run --group test pytest -v
 | `tools/build_us_places.py` | Regenerates `data/us-places.tsv` from the Census source |
 | `setup.ps1` | Windows: check and install prerequisites |
 | `setup.sh` | Mac/Linux: check and install prerequisites |
+
+## License
+
+Released under the [MIT License](LICENSE).

@@ -6,6 +6,13 @@ addresses. Technical detail for individual changes lives in the pull requests.
 The `release` job in CI publishes a GitHub Release for the version in the `VERSION` file on each
 merge to main - so bump `VERSION` and add a section here in every pull request.
 
+## 1.2.2 - 2026-08-21
+
+- Added an MIT license. The project now ships a `LICENSE` file, so anyone can see the terms the
+  tool is offered under rather than having to guess.
+- The README now shows a latest-release badge and a license badge next to the existing CI badge,
+  so the current version and the license are visible at a glance from the repository front page.
+
 ## 1.2.1 - 2026-08-16
 
 - First boot no longer tries to fetch packages before the network is up. On a freshly imaged Pi,
